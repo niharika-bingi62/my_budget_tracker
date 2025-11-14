@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multi Budget Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f9fafb;
+      margin: 0;
+      padding: 0;
+      color: #111827;
+    }
+
+    header.main {
+      background-color: #16a085;
+      color: white;
+      padding: 16px;
+      text-align: center;
+    }
+
+    header.main h1 {
+      margin: 0;
+      font-size: 1.8em;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+
+    .new-session {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    input, button, select {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+
+    button {
+      background-color: #16a085;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      border: none;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      background-color: #13856b;
+    }
+
+    .sessions {
+      margin-top: 25px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .session-card {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+    .progress-bar {
+      background-color: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+      height: 8px;
+      margin: 6px 0;
+    }
+
+    .progress {
+      background-color: #16a085;
+      height: 8px;
+      width: 0%;
+      transition: width 0.4s;
+    }
+
+    .session-buttons {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    /* OVERLAY PANEL */
+    .overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.3);
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 420px;
+      padding: 16px;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .expense {
+      background: #f1f5f9;
+      padding: 8px;
+      margin-top: 6px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .positive { color: green; }
+    .negative { color: red; }
+
+    .delete-exp {
+      background: #e74c3c;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: .8em;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 40px;
+      padding: 12px;
+      color: #6b7280;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header class="main">
+    <h1>Multi Budget Tracker</h1>
+    <p>Developed by <strong>Bingi Niharika</strong></p>
+  </header>
+
+  <div class="container">
+    <div class="new-session">
+      <h2>Create a New Session</h2>
+      <input id="sessionName" placeholder="Session name (e.g. Groceries, Fees)" />
+      <input id="sessionBudget" type="number" placeholder="Enter total budget (₹)" />
+      <button onclick="createSession()">Add Session</button>
+    </div>
+
+    <div class="sessions" id="sessionsList"></div>
+  </div>
+
+  <!-- POPUP PANEL -->
+  <div class="overlay" id="overlay">
+    <div class="panel">
+      <header style="display:flex; justify-content:space-between; align-items:center">
+        <button onclick="closePanel()">← Back</button>
+        <button onclick="deleteSessionInside()" style="background:#e74c3c;">Delete</button>
+      </header>
+
+      <h3 id="panelTitle"></h3>
+      <p id="panelBudget"></p>
+
+      <hr>
+
+      <h4>Add Expense</h4>
+      <input id="expDesc" placeholder="Description (Books, Milk, etc)" />
+      <input id="expAmt" type="number" placeholder="Amount ₹" />
+      <select id="expCat">
+        <option>General</option>
+        <option>Food</option>
+        <option>Travel</option>
+        <option>Utilities</option>
+        <option>Shopping</option>
+        <option>Education</option>
+        <option>Other</option>
+      </select>
+      <button onclick="addExpense()">Add Expense</button>
+
+      <hr>
+
+      <h4>Expenses</h4>
+      <div id="expenseList"></div>
+
+      <canvas id="chart" height="200" style="margin-top:10px; width:100%"></canvas>
+    </div>
+  </div>
+
+  <footer>
+    © 2025 Multi Budget Tracker | Designed & Developed by Bingi Niharika
+  </footer>
+
+  <script>
+    let sessions = JSON.parse(localStorage.getItem('budget_sessions') || '[]');
+    let activeSession = null;
+    let activeChart = null;
+
+    function saveData() {
+      localStorage.setItem('budget_sessions', JSON.stringify(sessions));
+    }
+
+    function createSession() {
+      const name = document.getElementById('sessionName').value.trim();
+      const budget = parseFloat(document.getElementById('sessionBudget').value);
+
+      if (!name || isNaN(budget) || budget <= 0) {
+        alert('Please enter valid session details.');
+        return;
+      }
+
+      sessions.push({
+        id: Date.now(),
+        name,
+        budget,
+        expenses: []
+      });
+
+      saveData();
+      renderSessions();
+      document.getElementById('sessionName').value = '';
+      document.getElementById('sessionBudget').value = '';
+    }
+
+    function renderSessions() {
+      const container = document.getElementById('sessionsList');
+      container.innerHTML = '';
+
+      sessions.forEach(s => {
+        const totalSpent = s.expenses.reduce((sum, e) => sum + e.amount, 0);
+        const remaining = s.budget - totalSpent;
+        const percent = Math.min(100, (totalSpent / s.budget) * 100);
+
+        const div = document.createElement('div');
+        div.className = 'session-card';
+
+        div.innerHTML = `
+          <h3>${s.name}</h3>
+          <p>Budget: ₹${s.budget} • Spent: ₹${totalSpent}</p>
+
+          <div class="progress-bar">
+            <div class="progress" style="width:${percent}%"></div>
+          </div>
+
+          <p>Remaining: <strong class="${remaining < 0 ? 'negative' : 'positive'}">₹${remaining}</strong></p>
+
+          <div class="session-buttons">
+            <button onclick="openSession(${s.id})">Open</button>
+            <button onclick="editSession(${s.id})" style="background:#2ecc71;">Edit</button>
+            <button onclick="deleteSession(${s.id})" style="background:#e74c3c;">Delete</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function openSession(id) {
+      activeSession = sessions.find(s => s.id === id);
+      document.getElementById('overlay').style.display = 'flex';
+      document.getElementById('panelTitle').innerText = activeSession.name;
+      document.getElementById('panelBudget').innerText = `Budget ₹${activeSession.budget}`;
+      renderExpenses();
+      drawChart();
+    }
+
+    function closePanel() {
+      document.getElementById('overlay').style.display = 'none';
+      activeSession = null;
+    }
+
+    function addExpense() {
+      const desc = document.getElementById('expDesc').value.trim();
+      const amt = parseFloat(document.getElementById('expAmt').value);
+      const cat = document.getElementById('expCat').value;
+
+      if (!desc || isNaN(amt) || amt <= 0) {
+        alert('Enter valid expense details.');
+        return;
+      }
+
+      activeSession.expenses.push({
+        id: Date.now(),
+        desc,
+        amount: amt,
+        category: cat,
+        date: new Date().toLocaleDateString()
+      });
+
+      saveData();
+      renderExpenses();
+      drawChart();
+
+      document.getElementById('expDesc').value = '';
+      document.getElementById('expAmt').value = '';
+    }
+
+    function renderExpenses() {
+      const list = document.getElementById('expenseList');
+      const exps = activeSession.expenses;
+
+      if (!exps.length) {
+        list.innerHTML = "<p>No expenses yet.</p>";
+        return;
+      }
+
+      list.innerHTML = exps.map(e => `
+        <div class="expense">
+          <div>
+            <strong>${e.desc}</strong> — ₹${e.amount}<br>
+            <small>${e.category} • ${e.date}</small>
+          </div>
+          <button class="delete-exp" onclick="deleteExpense(${e.id})">X</button>
+        </div>
+      `).join('');
+    }
+
+    function deleteExpense(expId) {
+      activeSession.expenses = activeSession.expenses.filter(e => e.id !== expId);
+      saveData();
+      renderExpenses();
+      drawChart();
+    }
+
+    function drawChart() {
+      if (activeChart) activeChart.destroy();
+
+      const ctx = document.getElementById('chart');
+      const totals = {};
+
+      activeSession.expenses.forEach(e => {
+        totals[e.category] = (totals[e.category] || 0) + e.amount;
+      });
+
+      activeChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: Object.keys(totals),
+          datasets: [{
+            data: Object.values(totals),
+            backgroundColor: ['#16a085','#f39c12','#e74c3c','#8e44ad','#3498db','#27ae60']
+          }]
+        },
+        options: { plugins: { legend: { position: 'bottom' } } }
+      });
+    }
+
+    function deleteSession(id) {
+      if (confirm("Delete this session?")) {
+        sessions = sessions.filter(s => s.id !== id);
+        saveData();
+        renderSessions();
+        closePanel();
+      }
+    }
+
+    function deleteSessionInside() {
+      if (activeSession) deleteSession(activeSession.id);
+    }
+
+    function editSession(id) {
+      const s = sessions.find(x => x.id === id);
+      const name = prompt("Edit name:", s.name);
+      const budget = parseFloat(prompt("Edit budget:", s.budget));
+
+      if (name && !isNaN(budget)) {
+        s.name = name;
+        s.budget = budget;
+        saveData();
+        renderSessions();
+      }
+    }
+
+    renderSessions();
+  </script>
+
+</body>
+</html>
